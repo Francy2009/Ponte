@@ -1,0 +1,205 @@
+import OpenAI from "openai";
+import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
+import { z } from "zod";
+import { systemPrompt } from "./core";
+export const OPENROUTER_MODEL = "apodex/apodex-1.1-mini:free";
+export type AiConfig = {
+  provider: "openrouter" | "openai";
+  label: string;
+  model: string;
+  apiKey: string;
+};
+export class AiError extends Error {
+  constructor(
+    message: string,
+    public status = 502,
+  ) {
+    super(message);
+    this.name = "AiError";
+  }
+}
+export function getAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
+  const provider =
+    env.AI_PROVIDER ||
+    (env.OPENROUTER_API_KEY
+      ? "openrouter"
+      : env.OPENAI_API_KEY
+        ? "openai"
+        : "openrouter");
+  if (provider !== "openrouter" && provider !== "openai")
+    throw new Error("AI_PROVIDER must be openrouter or openai.");
+  return provider === "openrouter"
+    ? {
+        provider,
+        label: "OpenRouter",
+        model: env.OPENROUTER_MODEL || OPENROUTER_MODEL,
+        apiKey: env.OPENROUTER_API_KEY?.trim() || "",
+      }
+    : {
+        provider,
+        label: "OpenAI",
+        model: env.OPENAI_MODEL || "gpt-4.1-mini",
+        apiKey: env.OPENAI_API_KEY?.trim() || "",
+      };
+}
+export async function callStructuredModel<T>(
+  schema: z.ZodType<T>,
+  name: string,
+  input: unknown,
+  config: AiConfig,
+  fetcher: typeof fetch = fetch,
+): Promise<T> {
+  if (!config.apiKey)
+    throw new AiError(
+      `AI analysis is unavailable. Configure ${config.provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"} on the server or try a demo example.`,
+      503,
+    );
+  let parsed: unknown;
+  const correction =
+    input !== null && typeof input === "object" && "correction" in input;
+  const taskInput = {
+    task:
+      name === "document_answer"
+        ? "Answer the document question in English. Missing information: use exactly The document does not specify this and no citations."
+        : "Analyze all document pages in English. Include amounts, applicable groups, conditions, exceptions and every issue needing clarification." +
+          (correction
+            ? " This is a correction of your previous draft. Follow the server validation issues in data.correction. Fix unsupported quotations and monetary claims using the original pages, then return the complete corrected analysis."
+            : ""),
+    output_language: "English",
+    source_language:
+      "Preserve the original language only inside citation.quote.",
+    data: input,
+  };
+  if (config.provider === "openai") {
+    const client = new OpenAI({
+      apiKey: config.apiKey,
+      timeout: 90000,
+      maxRetries: 1,
+    });
+    const response = await client.responses.parse({
+      model: config.model,
+      store: false,
+      max_output_tokens: 10000,
+      instructions: systemPrompt,
+      input: [{ role: "user", content: JSON.stringify(taskInput) }],
+      text: { format: zodTextFormat(schema, name) },
+    });
+    parsed = response.output_parsed;
+  } else {
+    // The live Apodex endpoint supports JSON mode, despite the catalog's
+    // structured-output flag. Supply the contract explicitly and validate locally.
+    const format = zodResponseFormat(schema, name);
+    const jsonMode = config.model === OPENROUTER_MODEL;
+    let response: Response;
+    try {
+      response = await fetcher(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          redirect: "error",
+          signal: AbortSignal.timeout(90000),
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: config.model,
+            messages: [
+              {
+                role: "system",
+                content: jsonMode
+                  ? `${systemPrompt}\nReturn only a JSON object matching this JSON Schema. Include every required field; use empty arrays when there are no facts in a category.\n${JSON.stringify(format.json_schema.schema)}\nFinal reminder: all user-facing strings must be English, even for non-English sources. Only citation.quote keeps the source language. Do not omit missing-attachment questions or exemptions.`
+                  : systemPrompt,
+              },
+              { role: "user", content: JSON.stringify(taskInput) },
+            ],
+            response_format: jsonMode ? { type: "json_object" } : format,
+            provider: { require_parameters: true },
+            max_tokens: 10000,
+            temperature: 0,
+            stream: false,
+          }),
+        },
+      );
+    } catch {
+      throw new AiError(
+        "OpenRouter could not be reached or the request timed out. Please try again.",
+      );
+    }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403)
+        throw new AiError(
+          "OpenRouter rejected the API key or access. Check OPENROUTER_API_KEY and your account settings.",
+          502,
+        );
+      if (response.status === 429)
+        throw new AiError(
+          "OpenRouter rate limit reached. Free models have usage limits. Wait a moment and try again.",
+          429,
+        );
+      if (response.status === 402)
+        throw new AiError(
+          "OpenRouter requires additional account credit or an account setting change for this request.",
+          502,
+        );
+      if (response.status === 400 || response.status === 404)
+        throw new AiError(
+          "OpenRouter rejected the request. Check that the exact model is available and supports structured outputs.",
+          502,
+        );
+      throw new AiError(
+        "OpenRouter or the model provider is temporarily unavailable. Try again or use a sample notice.",
+      );
+    }
+    const envelopeSchema = z.object({
+      choices: z
+        .array(
+          z.object({
+            finish_reason: z.string().nullable().optional(),
+            message: z.object({ content: z.string().nullable() }),
+          }),
+        )
+        .min(1),
+    });
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new AiError(
+        "OpenRouter returned an unreadable response. Please try again.",
+      );
+    }
+    const envelope = envelopeSchema.safeParse(payload);
+    if (!envelope.success)
+      throw new AiError(
+        "OpenRouter returned an invalid or empty response. Please try again.",
+      );
+    const choice = envelope.data.choices[0];
+    if (choice.finish_reason === "length")
+      throw new AiError(
+        "The model reached its response limit before finishing. Try a shorter document.",
+      );
+    if (
+      choice.finish_reason === "content_filter" ||
+      choice.finish_reason === "error"
+    )
+      throw new AiError(
+        "The model did not complete this request. Try again or use a sample notice.",
+      );
+    if (!choice.message.content)
+      throw new AiError("The model returned no answer. Please try again.");
+    try {
+      parsed = JSON.parse(choice.message.content);
+    } catch {
+      throw new AiError(
+        "The model returned invalid JSON. The result has not been shown. Please try again.",
+      );
+    }
+  }
+  const validated = schema.safeParse(parsed);
+  if (!validated.success)
+    throw new AiError(
+      "The AI response did not match the required format. The result has not been shown. Please try again.",
+    );
+  return validated.data;
+}
