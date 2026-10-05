@@ -1,0 +1,48 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+.cache/
+.eslintcache
+
+# Local credentials and configuration (publish only the empty template)
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Generated screenshots, quality reports and browser sessions
+artifacts/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+playwright/.auth/
+
+# Private documents and local runtime files
+/uploads/
+/data/
+/tmp/
+/temp/
+/logs/
+*.log
+
+# Editor, OS and local assistant/account settings
+.vscode/
+.idea/
+.history/
+.agents/
+.codex/
+.aws/
+.claude/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
