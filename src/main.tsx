@@ -28,6 +28,14 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import type { Result, Page, VerifiedFact } from "../shared/schema";
+import "@fontsource/dm-sans/latin-400.css";
+import "@fontsource/dm-sans/latin-500.css";
+import "@fontsource/dm-sans/latin-600.css";
+import "@fontsource/dm-sans/latin-700.css";
+import "@fontsource/manrope/latin-500.css";
+import "@fontsource/manrope/latin-600.css";
+import "@fontsource/manrope/latin-700.css";
+import "@fontsource/manrope/latin-800.css";
 import "./style.css";
 import { SourceButton, FactList } from "./components";
 import { matchesRecipient } from "../shared/matching";
@@ -39,19 +47,33 @@ type Example = {
   text: string;
 };
 async function api<T>(url: string, body?: unknown): Promise<T> {
-  const res = await fetch(
-    url,
-    body instanceof FormData
-      ? { method: "POST", body }
-      : body
-        ? {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          }
-        : undefined,
-  );
-  const data = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(
+      url,
+      body instanceof FormData
+        ? { method: "POST", body }
+        : body
+          ? {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }
+          : undefined,
+    );
+  } catch {
+    throw new Error(
+      "Unable to connect to Ponte. Check your connection and try again.",
+    );
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(
+      "The service is restarting or unavailable. Please try again shortly.",
+    );
+  }
   if (!res.ok) throw new Error(data.error || "Service unavailable.");
   return data;
 }
@@ -138,7 +160,9 @@ function App() {
         setExamples(e);
       })
       .catch(() =>
-        setError("The server is unavailable. Start Ponte and reload the page."),
+        setError(
+          "Ponte is temporarily unavailable. Reload the page or try again shortly.",
+        ),
       );
   }, []);
   useEffect(() => {
@@ -284,6 +308,9 @@ function App() {
     ] as const;
     const out =
       `PONTE · ${a.title}\n${result.mode === "demo" ? "EXAMPLE GUIDE — Sample notice with prepared explanations" : "DOCUMENT SUMMARY — Check the original for full details"}\n\n` +
+      (a.warnings?.length
+        ? "INCOMPLETE ANALYSIS\n" + a.warnings.join("\n") + "\n\n"
+        : "") +
       sections
         .map(
           ([title, items]) =>
@@ -296,7 +323,9 @@ function App() {
                       `${title === "Your to-do list" ? (checked.includes(i) ? "[x] " : "[ ] ") : "• "}${f.verified ? "" : "[UNVERIFIED] "}${"kind" in f ? "[" + f.kind.toUpperCase() + "] " : ""}${f.text}${f.detail ? " — " + f.detail : ""}${"deadline" in f ? "\nDeadline: " + f.deadline + " · Who: " + f.who + " · You need: " + f.prerequisites + " · " + (f.optional ? "Optional / if interested" : "Required under the stated conditions") : ""}\nSource${f.sourcePage ? " · page " + f.sourcePage : ""}: «${f.citation.quote}»`,
                   )
                   .join("\n\n")
-              : "The document does not specify this."),
+              : a.warnings?.length
+                ? "No verified information was extracted for this section. Review the original document."
+                : "The document does not specify this."),
         )
         .join("\n\n") +
       "\n\nORIGINAL DOCUMENT\n" +
@@ -766,7 +795,9 @@ function App() {
                 <strong>
                   {a!.actions.length
                     ? `${checked.length} of ${a!.actions.length} completed`
-                    : "No actions specified"}
+                    : a!.warnings?.length
+                      ? "Check the original for actions"
+                      : "No actions specified"}
                 </strong>
               </div>
               <ArrowUpRight size={17} />
@@ -782,7 +813,9 @@ function App() {
                     a!.dates.find(
                       (d) => d.kind === "deadline" && d.verified && d.iso,
                     )?.iso,
-                    "No dated deadline specified",
+                    a!.warnings?.length
+                      ? "Check the original for deadlines"
+                      : "No dated deadline specified",
                   )}
                 </strong>
               </div>
@@ -801,7 +834,9 @@ function App() {
                 <strong>
                   {a!.questions.length
                     ? `${a!.questions.length} point${a!.questions.length === 1 ? "" : "s"} need clarification`
-                    : "No specific issues flagged"}
+                    : a!.warnings?.length
+                      ? "Original document needs review"
+                      : "No specific issues flagged"}
                 </strong>
               </div>
               <ArrowUpRight size={17} />
@@ -835,6 +870,15 @@ function App() {
               ? "Example guide — Sample notice with prepared explanations."
               : "Document summary — Check the original notice for full details."}
           </p>
+          {a!.warnings?.map((warning, i) => (
+            <div className="analysis-warning" role="alert" key={i}>
+              <strong>Some information needs your review</strong>
+              <p>{warning}</p>
+              <button className="secondary" onClick={() => setShowDoc(true)}>
+                View original document
+              </button>
+            </div>
+          ))}
           <div className={"result-layout " + (showDoc ? "split" : "")}>
             <div className="result-content">
               <section className="result-card summary-card" id="overview">
@@ -859,7 +903,11 @@ function App() {
                   </div>
                   <FactList
                     items={a!.recipients}
-                    empty="The document does not specify who it is for."
+                    empty={
+                      a!.warnings?.length
+                        ? "Recipients could not be fully checked. Review the original document."
+                        : "The document does not specify who it is for."
+                    }
                     onOpen={setSource}
                   />
                   {audience && (
@@ -944,7 +992,9 @@ function App() {
                   ))
                 ) : (
                   <p className="empty-note">
-                    No explicit actions are given in the document.
+                    {a!.warnings?.length
+                      ? "No verified actions were extracted. Review the original document before assuming there is nothing to do."
+                      : "No explicit actions are given in the document."}
                   </p>
                 )}
                 <p className="section-note action-footnote">
@@ -984,7 +1034,9 @@ function App() {
                     ))
                   ) : (
                     <p className="empty-note">
-                      The document does not specify any dates.
+                      {a!.warnings?.length
+                        ? "No verified dates were extracted. Check the original document for deadlines."
+                        : "The document does not specify any dates."}
                     </p>
                   )}
                 </section>
@@ -1000,7 +1052,11 @@ function App() {
                   </div>
                   <FactList
                     items={a!.costs}
-                    empty="No costs or required documents are specified."
+                    empty={
+                      a!.warnings?.length
+                        ? "No verified costs were extracted. Check the original document for fees and required documents."
+                        : "No costs or required documents are specified."
+                    }
                     onOpen={setSource}
                   />
                 </section>

@@ -1,7 +1,21 @@
 import type { Page, VerifiedAnalysis } from "../../shared/schema";
 export type Check = { name: string; passed: boolean };
-const text = (items: { text: string; detail: string }[]) =>
-  items.map((f) => f.text + " " + f.detail).join("\n");
+const text = (
+  items: {
+    text: string;
+    detail: string;
+    who?: string;
+    deadline?: string;
+    prerequisites?: string;
+  }[],
+) =>
+  items
+    .map((f) =>
+      [f.text, f.detail, f.who, f.deadline, f.prerequisites]
+        .filter(Boolean)
+        .join(" "),
+    )
+    .join("\n");
 export const fixtures: {
   id: string;
   pages: Page[];
@@ -37,8 +51,8 @@ export const fixtures: {
         name: "page-two-form-deadline",
         passed: a.actions.some(
           (f) =>
-            /form/i.test(f.text + f.detail) &&
-            /new/i.test(f.who + f.text + f.detail) &&
+            /form/i.test(f.text + " " + f.detail) &&
+            /new/i.test(f.who + " " + f.text + " " + f.detail) &&
             f.sourcePage === 2 &&
             /10/.test(f.deadline),
         ),
@@ -47,13 +61,16 @@ export const fixtures: {
         name: "existing-member-exception",
         passed:
           /already|existing|current/i.test(
-            text([...a.summary, ...a.actions]),
-          ) && /not|exempt|only|new/i.test(text([...a.summary, ...a.actions])),
+            text([...a.summary, ...a.actions, ...a.costs]),
+          ) &&
+          /not|exempt|only|new/i.test(
+            text([...a.summary, ...a.actions, ...a.costs]),
+          ),
       },
       {
         name: "english-explanation",
         passed: !/\b(devono|entro|iscritti|consegnare|residenti)\b/i.test(
-          text([...a.summary, ...a.actions]),
+          text([...a.summary, ...a.actions, ...a.costs]),
         ),
       },
     ],
@@ -173,7 +190,7 @@ export const fixtures: {
       {
         name: "last-page-fee",
         passed: a.costs.some(
-          (f) => /\b17\b/.test(f.text + f.detail) && f.sourcePage === 5,
+          (f) => /\b17\b/.test(f.text + " " + f.detail) && f.sourcePage === 5,
         ),
       },
       {
@@ -195,8 +212,10 @@ export const fixtures: {
       {
         name: "existing-members-exempt",
         passed:
-          /existing/i.test(text([...a.summary, ...a.actions])) &&
-          /not|again|exempt|only/i.test(text([...a.summary, ...a.actions])),
+          /existing/i.test(text([...a.summary, ...a.actions, ...a.costs])) &&
+          /not|again|exempt|only/i.test(
+            text([...a.summary, ...a.actions, ...a.costs]),
+          ),
       },
     ],
   },
@@ -245,8 +264,12 @@ fixtures.push({
     {
       name: "renewing-members-exempt",
       passed:
-        /current|renewing/i.test(text([...a.summary, ...a.actions])) &&
-        /not|another|only|exempt/i.test(text([...a.summary, ...a.actions])),
+        /current|renewing/i.test(
+          text([...a.summary, ...a.actions, ...a.costs]),
+        ) &&
+        /not|another|only|exempt/i.test(
+          text([...a.summary, ...a.actions, ...a.costs]),
+        ),
     },
     {
       name: "attendance-not-required",

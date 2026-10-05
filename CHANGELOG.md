@@ -23,6 +23,16 @@
 - Presentation copy, favicon and sharing metadata.
 - Git exclusions for credentials, runtime data and generated outputs.
 - Locked dependencies, contributor instructions and GitHub build/test automation.
+- MIT license and bundled third-party notices.
+
+### Deployment preparation
+
+- Production configuration validation, same-origin checks, security headers and a health endpoint.
+- Per-client request limits, bounded PDF/model concurrency and a daily provider-request budget.
+- Isolated PDF workers with memory and time limits; worker startup does not inherit the TypeScript loader.
+- Locally hosted fonts, immutable asset caching and visitor-friendly network errors.
+- A non-root container image, clean production-install smoke check and deployment instructions.
+- Production-mode desktop/mobile browser tests, upload regressions and dependency auditing in CI.
 
 ## Development milestones
 

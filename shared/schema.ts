@@ -72,7 +72,7 @@ export type VerifiedFact = Fact & {
 export type VerifiedAnalysis = Omit<
   Analysis,
   "summary" | "recipients" | "actions" | "dates" | "costs" | "questions"
-> & {
+> & { warnings?: string[] } & {
   [
     K in "summary" | "recipients" | "actions" | "dates" | "costs" | "questions"
   ]: (Analysis[K][number] & VerifiedFact)[];
@@ -90,6 +90,10 @@ export const inputSchema = z
     role: z.enum(["", "myself", "someone_else"]).default(""),
     audience: z.string().max(40).default(""),
   })
+  .refine(
+    (x) => new Set(x.pages.map((page) => page.number)).size === x.pages.length,
+    "Page numbers must be unique.",
+  )
   .refine(
     (x) => x.pages.reduce((n, p) => n + p.text.length, 0) <= 60000,
     "Document too long (maximum 60,000 characters).",

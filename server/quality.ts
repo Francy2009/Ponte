@@ -2,6 +2,7 @@ import { z } from "zod";
 import { type Analysis, type Page, citationSchema } from "../shared/schema";
 import { verifyAnalysis, verifyFact } from "./core";
 import { AiError } from "./ai";
+import { hasReaderInstructions } from "./evidence";
 import { moneyClaimsSupported } from "../shared/money";
 export const answerSchema = z.object({
   answer: z
@@ -29,6 +30,21 @@ const categories = [
   "costs",
   "questions",
 ] as const;
+function hasUntranslatedWording(fact: {
+  text: string;
+  detail: string;
+  who?: string;
+  deadline?: string;
+  prerequisites?: string;
+}) {
+  // Catch copied Italian prose in English output; quotations are intentionally
+  // excluded. Proper names such as Via Tiglio remain allowed.
+  return /\b(?:devono|entro|consegnare|firmato|comunale|facoltativo|iscritti|residenti|partecipanti|portare)\b/i.test(
+    [fact.text, fact.detail, fact.who, fact.deadline, fact.prerequisites].join(
+      " ",
+    ),
+  );
+}
 export async function analyzeWithEvidence(
   input: { pages: Page[]; role?: string; audience?: string },
   generate: (input: unknown) => Promise<Analysis>,
@@ -38,35 +54,116 @@ export async function analyzeWithEvidence(
   const failures = () =>
     categories.flatMap((k) =>
       result[k].flatMap((f, i) =>
-        f.verified
+        f.verified && !hasUntranslatedWording(f)
           ? []
           : [
               {
                 category: k,
                 index: i,
-                reason:
-                  "The quotation or the stated monetary amount is not supported by the source on its stated page.",
+                reason: hasUntranslatedWording(f)
+                  ? "Translate every displayed field into English. Preserve proper names and keep source-language text only inside citations. Do not copy source prose into detail, who or prerequisites."
+                  : "The quotation or the stated monetary amount is not supported by the source on its stated page.",
               },
             ],
       ),
     );
-  const issues = failures();
+  const uncovered = input.pages.filter(
+    (page) =>
+      hasReaderInstructions(page.text) &&
+      !categories.some((key) =>
+        result[key].some(
+          (fact) => fact.verified && fact.sourcePage === page.number,
+        ),
+      ),
+  );
+  const issues = [
+    ...failures(),
+    ...uncovered.map((page) => ({
+      category: "coverage",
+      index: page.number,
+      reason:
+        "This page contains possible reader instructions or costs but no verified item refers to it. Read this page and include its applicable obligations, fees, dates, conditions and exceptions.",
+    })),
+  ];
   if (issues.length) {
-    raw = await generate({
-      ...input,
-      previous_analysis: raw,
-      correction: {
-        instruction:
-          "Correct every unsupported quotation by copying a real contiguous passage from the original pages. Do not invent evidence or drop supported obligations, fees, deadlines or exceptions to hide the issue. Return the complete corrected analysis.",
-        issues,
-      },
-    });
-    result = verifyAnalysis(raw, input.pages);
-    if (failures().length)
-      throw new AiError(
-        "The analysis could not be verified against the original document. No result has been shown. Please try again.",
+    const first = result;
+    let corrected: typeof result | undefined;
+    try {
+      raw = await generate({
+        ...input,
+        previous_analysis: raw,
+        correction: {
+          instruction:
+            "Repair only the listed items. Keep every category's item order and all already-supported items unchanged. Each replacement must be proven by its selected source passages. Preserve supported obligations, fees, deadlines, conditions and exceptions. Return the complete corrected analysis.",
+          issues,
+        },
+      });
+      corrected = verifyAnalysis(raw, input.pages);
+    } catch (error) {
+      // A second provider failure must not discard the verified first draft.
+      if (!(error instanceof AiError)) throw error;
+    }
+    // Coverage repair can add facts on previously ignored pages. Preserve the
+    // valid initial facts while accepting verified additions from those pages.
+    if (corrected && uncovered.length) {
+      for (const key of categories) {
+        const additions = corrected[key].filter(
+          (f) => f.verified && uncovered.some((p) => p.number === f.sourcePage),
+        );
+        (first[key] as unknown) = [...first[key], ...additions];
+      }
+    }
+    const omitted: string[] = [];
+    for (const key of categories) {
+      let missing = 0;
+      const items = first[key].flatMap((fact, index) => {
+        if (fact.verified && !hasUntranslatedWording(fact)) return [fact];
+        const repair = corrected?.[key][index];
+        if (repair?.verified && !hasUntranslatedWording(repair))
+          return [repair];
+        missing++;
+        return [];
+      });
+      (result[key] as unknown) = items;
+      if (missing)
+        omitted.push(`${missing} ${key} item${missing === 1 ? "" : "s"}`);
+    }
+    const missingPages = uncovered.filter(
+      (page) =>
+        !categories.some((key) =>
+          result[key].some((f) => f.verified && f.sourcePage === page.number),
+        ),
+    );
+    if (missingPages.length)
+      omitted.push(
+        `information from page${missingPages.length === 1 ? "" : "s"} ${missingPages.map((p) => p.number).join(", ")}`,
       );
+    if (omitted.length) {
+      result.warnings = [
+        `This analysis is incomplete. ${omitted.join(", ")} could not be checked against the source and were left out. Review the original document for obligations, dates and costs before relying on the checklist.`,
+      ];
+    }
+    if (!result.summary.length) {
+      const supported = categories
+        .flatMap((key) => result[key])
+        .find((f) => f.verified);
+      if (!supported)
+        throw new AiError(
+          "The model did not return any supported information. Your document is still available; please try again.",
+        );
+      result.summary = [
+        {
+          text: supported.text,
+          detail: supported.detail,
+          citation: supported.citation,
+          verified: true,
+          sourcePage: supported.sourcePage,
+          context: supported.context,
+        },
+      ];
+    }
   }
+  result.dates.sort((a, b) => (a.iso ?? "9999").localeCompare(b.iso ?? "9999"));
   // Carry explicit missing-attachment evidence into the clarification section,
   // even when the model mentions it only in its summary.
   for (const page of input.pages) {
@@ -139,4 +236,25 @@ export function verifyAnswer(answer: Answer, pages: Page[]) {
     citations,
     verified: grounded,
   };
+}
+
+export async function answerWithEvidence(
+  input: { pages: Page[]; question: string; role?: string; audience?: string },
+  generate: (input: unknown) => Promise<Answer>,
+) {
+  const first = verifyAnswer(await generate(input), input.pages);
+  if (first.verified) return first;
+  try {
+    const corrected = await generate({
+      ...input,
+      correction: {
+        instruction:
+          "The previous answer was not supported by its source references or included unsupported numbers or currencies. Answer only from directly relevant source passages. Preserve the original amounts, dates, currencies and conditions. If the information is missing, answer exactly The document does not specify this with citations [].",
+      },
+    });
+    return verifyAnswer(corrected, input.pages);
+  } catch (error) {
+    if (!(error instanceof AiError)) throw error;
+    return first;
+  }
 }

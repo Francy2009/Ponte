@@ -212,3 +212,103 @@ test("Presentation interface hides setup details and clearly labels example cont
     /prototype|DEMO|demonstration only/i,
   );
 });
+
+test("Incomplete analysis warning is visible, exported and links to the original", async ({
+  page,
+}, info) => {
+  await page.route("**/api/demo", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.analysis.warnings = [
+      "This analysis is incomplete. 1 actions item could not be checked against the source and was left out. Review the original document.",
+    ];
+    data.analysis.actions = [];
+    await route.fulfill({ response, json: data });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: /A payment, with clear next steps/ })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "This analysis is incomplete",
+  );
+  await expect(
+    page.getByText("Check the original for actions", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No verified actions were extracted.", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "View original document", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Original document", exact: true }),
+  ).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download summary" }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream!) chunks.push(chunk);
+  expect(Buffer.concat(chunks).toString()).toContain("INCOMPLETE ANALYSIS");
+  await page.screenshot({
+    path: `artifacts/incomplete-analysis-${info.project.name}.png`,
+    fullPage: true,
+  });
+});
+
+test("Production CSP allows the interface and locally served fonts without external requests", async ({
+  page,
+}) => {
+  const external: string[] = [];
+  const violations: string[] = [];
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (!["localhost", "127.0.0.1"].includes(url.hostname)) {
+      external.push(url.origin);
+      await route.abort();
+      return;
+    }
+    await route.fallback();
+  });
+  page.on("console", (message) => {
+    if (/content security policy|violates.*directive/i.test(message.text()))
+      violations.push(message.text());
+  });
+  const response = await page.goto("/");
+  expect(await response!.headerValue("content-security-policy")).toContain(
+    "font-src 'self'",
+  );
+  await page.evaluate(() => document.fonts.ready);
+  expect(
+    await page.evaluate(() => document.fonts.check("800 32px Manrope")),
+  ).toBe(true);
+  await page
+    .getByRole("button", { name: /A payment, with clear next steps/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Community centre membership renewal" }),
+  ).toBeVisible();
+  expect(external).toEqual([]);
+  expect(violations).toEqual([]);
+});
+
+test("A real text PDF uploads and extracts through the production worker", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const extraction = page.waitForResponse((response) =>
+    response.url().endsWith("/api/extract"),
+  );
+  await page
+    .locator("input[type=file]")
+    .setInputFiles("tests/fixtures/notice.pdf");
+  const response = await extraction;
+  expect(response.status()).toBe(200);
+  const data = await response.json();
+  expect(data.pages[0].text).toContain("5 November 2026");
+  await expect(
+    page.getByText("1 page read successfully", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

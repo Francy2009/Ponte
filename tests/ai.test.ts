@@ -47,6 +47,8 @@ test("OpenRouter request pins Apodex, supplies its schema in JSON mode and valid
     assert.match(body.messages[0].content, /JSON Schema/);
     assert.match(body.messages[0].content, /"required":\["answer"\]/);
     assert.equal(body.provider.require_parameters, true);
+    assert.equal(body.max_tokens, 16384);
+    assert.deepEqual(body.reasoning, { effort: "low" });
     assert.equal(body.messages[0].role, "system");
     assert.match(body.messages[0].content, /clear, respectful English/);
     const task = JSON.parse(body.messages[1].content);
@@ -138,7 +140,7 @@ test("Truncated replies and provider error envelopes are rejected", async () => 
         ],
       }),
     ),
-    /response limit/,
+    /automatic retry/,
   );
   await assert.rejects(
     callStructuredModel(
@@ -172,4 +174,166 @@ test("Free-model rate limits and invalid API keys have clear, sanitized errors",
     ),
     /API key/,
   );
+});
+
+test("A truncated reply is regenerated once with more space and the complete source", async () => {
+  const requests: any[] = [];
+  const input = {
+    pages: [{ number: 1, text: "Pay GBP 25 by 12 November 2026." }],
+  };
+  const fetcher = (async (_url, options) => {
+    requests.push(JSON.parse(options!.body as string));
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: requests.length === 1 ? "length" : "stop",
+            message: {
+              content:
+                requests.length === 1
+                  ? '{"answer":'
+                  : '{"answer":"Complete answer"}',
+            },
+          },
+        ],
+      }),
+    );
+  }) as typeof fetch;
+  const result = await callStructuredModel(
+    schema,
+    "test",
+    input,
+    config,
+    fetcher,
+  );
+  assert.equal(result.answer, "Complete answer");
+  assert.deepEqual(
+    requests.map((r) => r.max_tokens),
+    [16384, 32768],
+  );
+  for (const request of requests) {
+    assert.equal(request.model, OPENROUTER_MODEL);
+    assert.deepEqual(JSON.parse(request.messages[1].content).data, input);
+  }
+});
+
+test("Repeated truncation stops after two requests and rejects even parseable partial output", async () => {
+  let calls = 0;
+  const fetcher = (async () => {
+    calls++;
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: "length",
+            message: { content: '{"answer":"Partial"}' },
+          },
+        ],
+      }),
+    );
+  }) as typeof fetch;
+  await assert.rejects(
+    callStructuredModel(schema, "test", {}, config, fetcher),
+    /automatic retry/,
+  );
+  assert.equal(calls, 2);
+});
+
+test("Document analysis requests source IDs and returns server-resolved quotations", async () => {
+  const { analysisSchema } = await import("../shared/schema");
+  const inputPages = [{ number: 7, text: "The fee is EUR 28." }];
+  const payload = {
+    title: "Membership fee",
+    summary: [
+      { text: "Pay EUR 28.", detail: "", citation: { source_ids: ["s1"] } },
+    ],
+    recipients: [],
+    actions: [],
+    dates: [],
+    costs: [],
+    questions: [],
+  };
+  const fetcher = (async (_url, options) => {
+    const request = JSON.parse(options!.body as string);
+    const data = JSON.parse(request.messages[1].content).data;
+    assert.equal(data.pages, undefined);
+    assert.deepEqual(data.source_passages, [
+      { id: "s1", page: 7, text: inputPages[0].text },
+    ]);
+    assert.match(request.messages[0].content, /source_ids/);
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { content: JSON.stringify(payload) },
+          },
+        ],
+      }),
+    );
+  }) as typeof fetch;
+  const result = await callStructuredModel(
+    analysisSchema,
+    "document_analysis",
+    { pages: inputPages },
+    config,
+    fetcher,
+  );
+  assert.deepEqual(result.summary[0].citation, {
+    page: 7,
+    quote: inputPages[0].text,
+  });
+});
+
+test("Schema mistakes receive one actionable correction; incomplete JSON is never displayed", async () => {
+  let calls = 0;
+  const fetcher = (async (_url, options) => {
+    const request = JSON.parse(options!.body as string);
+    calls++;
+    if (calls === 2)
+      assert.match(request.messages[1].content, /response-format errors/);
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              content: JSON.stringify(
+                calls === 1 ? { unexpected: true } : { answer: "Corrected" },
+              ),
+            },
+          },
+        ],
+      }),
+    );
+  }) as typeof fetch;
+  assert.deepEqual(
+    await callStructuredModel(schema, "test", {}, config, fetcher),
+    { answer: "Corrected" },
+  );
+  assert.equal(calls, 2);
+});
+
+test("Every provider attempt, including a truncation retry, passes the quota gate", async () => {
+  let calls = 0,
+    gates = 0;
+  const fetcher = (async () => {
+    calls++;
+    return new Response(
+      JSON.stringify({
+        choices: [
+          { finish_reason: "length", message: { content: '{"answer":' } },
+        ],
+      }),
+    );
+  }) as typeof fetch;
+  await assert.rejects(
+    callStructuredModel(schema, "test", {}, config, fetcher, () => {
+      gates++;
+      if (gates === 2) throw Error("quota gate blocked the retry");
+    }),
+    /quota gate blocked/,
+  );
+  assert.equal(calls, 1);
+  assert.equal(gates, 2);
 });

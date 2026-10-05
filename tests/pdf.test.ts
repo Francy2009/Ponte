@@ -38,3 +38,15 @@ test("PDF without text states OCR is unavailable and does not simulate reading",
 test("Oversized PDF rejected before reading", async () => {
   await assert.rejects(extractPdf(Buffer.alloc(10 * 1024 * 1024 + 1)), /10 MB/);
 });
+
+test("An extraction deadline terminates the worker and releases its slot", async () => {
+  await assert.rejects(
+    extractPdf(pdf("Valid input"), {
+      timeoutMs: 25,
+      workerUrl: new URL("./fixtures/hanging-pdf-worker.mjs", import.meta.url),
+    }),
+    (error: any) => error.status === 504 && /too long/.test(error.message),
+  );
+  const pages = await extractPdf(pdf("Worker slot recovered."));
+  assert.match(pages[0].text, /Worker slot recovered/);
+});

@@ -12,17 +12,23 @@
     "format": "prettier --write src server shared scripts tests *.ts *.json *.html *.md .github",
     "test:openrouter": "node --import tsx scripts/check-openrouter.ts",
     "test:quality": "node --import tsx scripts/evaluate-openrouter.ts",
-    "format:check": "prettier --check src server shared scripts tests *.ts *.json *.html *.md .github"
+    "format:check": "prettier --check src server shared scripts tests *.ts *.json *.html *.md .github",
+    "check:release": "node --import tsx scripts/check-release.ts"
   },
   "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "lucide-react": "^0.468.0",
     "multer": "^2.0.2",
     "openai": "^6.0.0",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "tsx": "^4.23.15",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -35,11 +41,11 @@
     "@vitejs/plugin-react": "^5.0.3",
     "concurrently": "^9.2.1",
     "prettier": "^3.9.9",
-    "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.1.7"
   },
   "engines": {
     "node": ">=22.13.0"
-  }
+  },
+  "license": "MIT"
 }

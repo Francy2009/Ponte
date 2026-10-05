@@ -1,4 +1,20 @@
-# Validation — 3 October 2026
+# Validation
+
+## Deployment verification — 5 October 2026
+
+The current release preparation passes 69 backend tests, TypeScript/Vite compilation, formatting and 14 production-mode browser tests across desktop and mobile. The browser suite covers the document workflow, source views, chat, incomplete-analysis warnings, exports, keyboard controls, real PDF uploads, the content security policy and locally served fonts. Browser tests run without provider credentials. `npm audit` reports zero vulnerabilities at all severities for the locked dependency tree at the time of this check.
+
+`npm run check:release` passes seven checks in a clean temporary copy installed with production dependencies only: startup/health, compiled page and CSP, prepared examples, PDF worker extraction, font license distribution and graceful shutdown, plus dependency installation. Test credentials are explicitly empty, and the copy excludes `.env`, Git history and generated test reports.
+
+The container image is built in Docker format using Node 22.23.3. It runs as UID 1000. Its runtime excludes credentials, Git metadata, test artifacts and Vite. The runtime smoke check uses a read-only root filesystem, a temporary `/tmp`, dropped Linux capabilities, no provider key, and a 512 MB memory limit. The first container check found that inherited TypeScript loader hooks could exhaust the PDF worker's heap; the worker now starts as native JavaScript. The corrected image passes five HTTP checks, including the same real PDF upload, and its container health check. Local backend and production-install checks were rerun after the fix.
+
+Production settings reject missing/invalid origins and out-of-range limits. HTTP integration tests cover cross-site writes, malformed/oversized requests, forwarded-header spoofing, rate limits, the daily provider budget, concurrent uploads, safe error responses, asset caching and restricted static files. `/api/health` checks application availability, not upstream model availability.
+
+After restarting the final local build on port 3002, direct `/api/analyze` and `/api/chat` requests passed with `apodex/apodex-1.1-mini:free` and a fictional English renewal notice. The EUR 28 fee was retained, all displayed analysis items had verified literal source quotations, and the payment answer had verified citations. The ignored report is `artifacts/quality/release-live-routes.json`. This is an endpoint smoke check, not a rerun of the full live quality suite.
+
+These checks establish the tested local deployment behavior. Publishing still requires a hosting service, HTTPS, the configured origin and server-side provider credentials. Request budgets are per process and reset on restart; the deployment guide describes their scope and provider account spending controls. Live-model evaluations below remain separate from these infrastructure checks and do not guarantee accuracy on arbitrary documents.
+
+## Earlier verification — 3 October 2026
 
 ## Automated checks
 
@@ -42,3 +58,17 @@ These checks do not prove that every paraphrase or inferred relationship is sema
 Removed prototype/demo labels and provider setup details from the visitor interface; example notices remain clearly marked as sample content with prepared explanations and answers. Updated summaries, print/export labels, footer and unavailable-service text. Added the Ponte favicon and basic sharing metadata.
 
 The production build passed, as did 41 backend tests and 8 desktop/mobile browser tests. Home layouts were inspected visually. The compiled app was started locally on port 3002 for presentation, with the existing OpenRouter configuration. This is an in-person/local presentation setup; the app has not been published to a public hosting service.
+
+## Evidence-reference update
+
+Live analysis and chat now select numbered source passages instead of generating quotation text. The server resolves those IDs to literal original spans and page numbers. Unknown, nonconsecutive, reordered and cross-page references are rejected. All original text remains in the passage catalog.
+
+Response-format errors receive one bounded correction. Evidence correction retains the first draft's already verified facts. Remaining unsupported items are omitted with an explicit incomplete-analysis warning in the interface, downloaded summary and printed view. Empty sections of an incomplete analysis ask the reader to check the original instead of claiming that information is absent. Monetary claims are checked across all analysis categories. Earlier results above describe the previous pipeline and do not establish live-model quality for this update.
+
+The page-coverage check requests a correction when a page containing possible reader instructions or costs has no verified result item. A remaining coverage gap produces an incomplete-analysis warning. This is a heuristic for omissions, not a guarantee that every obligation is captured. Chat has one bounded evidence correction, and contradictory normalized dates are treated as unsupported rather than merely losing their sort date. Copied Italian prose in displayed fields also receives an English correction; source quotations remain in their original language.
+
+Browser tests use a separate compiled server on port 3101 with empty provider credentials, avoiding changes to an existing development session.
+
+For the evidence-reference pipeline, the first complete seven-case live run passed 37/43 checks. It exposed a missed final page and untranslated Italian details. After adding coverage and language corrections, the two affected cases passed 15/15 checks in a targeted live rerun (`evidence-final-review.json`). The five other cases passed in the complete run; these are separate runs, not a single 43/43 run of the final implementation. Reports contain fictional test data and are kept in the ignored `artifacts/quality/` directory.
+
+Final local checks passed: backend tests, TypeScript/build and formatting; all 10 desktop/mobile browser tests, followed by both targeted incomplete-analysis tests after the last wording/style changes. A direct live check of the restarted `/api/analyze` and `/api/chat` endpoints also passed with a fictional English notice: the EUR 28 fee was retained and both responses had verified source evidence (`artifacts/quality/evidence-live-routes.json`).

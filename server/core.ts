@@ -1,5 +1,5 @@
 import { supportedDate } from "../shared/dates";
-import { clarifyCost } from "../shared/money";
+import { clarifyCost, moneyClaimsSupported } from "../shared/money";
 import { recoverWhitespaceQuote } from "./citations";
 import {
   analysisSchema,
@@ -59,15 +59,32 @@ export function verifyAnalysis(raw: unknown, pages: Page[]): VerifiedAnalysis {
   ] as const) {
     (result[key] as unknown) = parsed[key].map((f) => {
       const verified = verifyFact(f, pages);
+      if (
+        !moneyClaimsSupported(
+          [
+            f.text,
+            f.detail,
+            "who" in f ? f.who : "",
+            "deadline" in f ? f.deadline : "",
+            "prerequisites" in f ? f.prerequisites : "",
+          ].join(" "),
+          verified.citation.quote,
+        )
+      )
+        verified.verified = false;
       return key === "costs" ? clarifyCost(verified) : verified;
     });
   }
   // Only dates carrying an explicit year in their source may be chronologically interpreted.
   result.dates = result.dates
-    .map((d) => ({
-      ...d,
-      iso: d.verified ? supportedDate(d.iso, d.citation.quote) : null,
-    }))
+    .map((d) => {
+      const iso = d.verified ? supportedDate(d.iso, d.citation.quote) : null;
+      return {
+        ...d,
+        iso,
+        verified: d.verified && (d.iso === null || iso !== null),
+      };
+    })
     .sort((a, b) => (a.iso ?? "9999").localeCompare(b.iso ?? "9999"));
   return result;
 }

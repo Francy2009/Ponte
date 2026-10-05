@@ -1,0 +1,33 @@
+# Send only application source and locked build inputs to the builder.
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!tsconfig.json
+!vite.config.ts
+!index.html
+!src/
+!src/**
+!server/
+!server/**
+!shared/
+!shared/**
+!scripts/
+!scripts/**
+!tests/
+!tests/**
+!public/
+!public/**
+!LICENSE
+!THIRD_PARTY_NOTICES.md
+# Never include local secrets, even inside an allowed source directory.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/node_modules
+**/.git
+**/artifacts
+**/test-results
