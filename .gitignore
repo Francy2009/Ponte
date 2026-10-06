@@ -19,6 +19,7 @@ coverage/
 
 # Generated screenshots, quality reports and browser sessions
 artifacts/
+/output/
 test-results/
 playwright-report/
 blob-report/
