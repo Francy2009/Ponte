@@ -7,7 +7,13 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       port: 5173,
-      proxy: { "/api": `http://127.0.0.1:${backendPort}` },
+      proxy: {
+        "/api": {
+          target: `http://127.0.0.1:${backendPort}`,
+          // Keep the browser host so the API can verify its same-origin writes.
+          changeOrigin: false,
+        },
+      },
     },
   };
 });

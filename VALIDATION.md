@@ -72,3 +72,11 @@ Browser tests use a separate compiled server on port 3101 with empty provider cr
 For the evidence-reference pipeline, the first complete seven-case live run passed 37/43 checks. It exposed a missed final page and untranslated Italian details. After adding coverage and language corrections, the two affected cases passed 15/15 checks in a targeted live rerun (`evidence-final-review.json`). The five other cases passed in the complete run; these are separate runs, not a single 43/43 run of the final implementation. Reports contain fictional test data and are kept in the ignored `artifacts/quality/` directory.
 
 Final local checks passed: backend tests, TypeScript/build and formatting; all 10 desktop/mobile browser tests, followed by both targeted incomplete-analysis tests after the last wording/style changes. A direct live check of the restarted `/api/analyze` and `/api/chat` endpoints also passed with a fictional English notice: the EUR 28 fee was retained and both responses had verified source evidence (`artifacts/quality/evidence-live-routes.json`).
+
+## Localhost upload regression — 6 October 2026
+
+Vite's string-form proxy rewrote the Host header to the backend address while keeping the browser Origin. This caused local PDF uploads, examples and chat to fail the same-origin check with HTTP 403. The proxy now explicitly preserves Host with `changeOrigin: false`; the backend's origin protection is unchanged.
+
+A regression test starts the real Vite proxy and API on temporary ports, checks examples, prepared chat and a real PDF upload from both localhost and 127.0.0.1, and confirms that an external origin is rejected. All 70 automated tests, TypeScript/build, formatting, the seven production-install smoke checks and 14 production-mode desktop/mobile browser tests passed. PDF uploads also passed in Chromium against the running local development app on both hostnames.
+
+The new `npm run local` command builds and starts the compiled app. It was checked after an offline locked dependency installation in a clean temporary source copy without `.env` or provider credentials: startup, page, API configuration and a prepared example passed. The README distinguishes development mode on port 5173 from the compiled app on port 3001 by default. Live analysis of user documents still requires the tester's own provider key.
