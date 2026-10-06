@@ -1,26 +1,69 @@
 # Ponte
 
-Ponte is for those letters and forms that sit on the table while you try to work out what they actually want from you. You upload a PDF or paste the text, and it answers in plain English: what to do, by when, and what it might cost. Every detail points back to a quotation in the original, so you can check it yourself.
+Ponte helps people understand everyday documents and work out what to do next. Upload a PDF or paste its text, and you get an explanation in plain English, a checklist, dates, costs and links back to the original passages.
+
+## Why Ponte exists
+
+A letter can be short and still leave you with a lot of questions. Does it apply to you? Is that date a deadline or an appointment? Do you need to send something back, pay a fee, or simply keep it for your records?
+
+Ponte brings those details together so you can read the document, understand what it asks of you and follow through. It is meant for ordinary paperwork: bills, renewals, appointment letters, forms and official notices. You can use it for yourself or when helping someone else.
+
+The goal is to make the next step easier to understand while keeping the original document close at hand. You should be able to see where an answer came from, and when the document leaves something unanswered.
 
 ![Ponte document workspace](docs/images/ponte-home.png)
 
-It is meant for ordinary paperwork: a bill, a renewal, a notice about an appointment, or helping someone else through the same pile. English documents work best. Other languages can go in too. Explanations stay in English; quotations keep the original wording.
+## What you can do
 
-## Getting started
+- **Add a document.** Upload a PDF with selectable text or paste the complete text. You can also say who you are reading for and name a recipient or group.
+- **Understand the essentials.** Get a plain-English explanation of what the document says and who it concerns, including conditions that affect what you need to do.
+- **Build a checklist.** See the actions, what you need to prepare and any stated deadlines. Tick off tasks as you complete them.
+- **Find dates and costs.** Review deadlines, appointments, fees and payment details together, with event dates kept separate from deadlines.
+- **Check an answer against the source.** Open the quotation and its page with **View source**, or read the extracted document text beside the results with **View document**.
+- **Ask about the document.** Ask questions such as “When do I need to pay?” or “Who should submit the form?” Answers link back to supporting passages.
+- **See what needs clarification.** Missing attachments, unclear dates and unanswered questions are brought to your attention so you know what to ask the sender.
+- **Keep a copy of the results.** Download a text summary or use **Print / PDF**. When you are finished, **Clear document & start again** resets the workspace.
 
-You need Node.js 22.13 or later, and npm.
+## A simple example
+
+Imagine a membership renewal notice with one deadline for returning a form, another for paying the fee, and a later date when membership begins.
+
+Ponte puts the form and payment into a checklist, shows the fee, and separates those deadlines from the start date. You can open the source for each detail before acting on it. If the notice mentions an attachment that was not included, that becomes something to clarify with the sender.
+
+The app includes three fictional sample guides: a renewal, an appointment and an incomplete notice. Their explanations and chat answers are prepared, so you can explore the workflow without an API key or sending anything to an AI provider.
+
+## What to expect from the answers
+
+Ponte uses AI to interpret the document. The server then checks source references and supplies quotations directly from the original text. It also checks monetary claims and calendar dates. If an item cannot be supported after a correction attempt, it is left out and the analysis is marked as incomplete. That warning stays in downloaded and printed results too. If no supported information remains, no analysis is shown.
+
+These checks have limits: a correct quotation does not prove that the explanation is correct. Check the original passage before relying on a deadline, payment or instruction. Ambiguous dates keep their original wording rather than receiving a guessed calendar date.
+
+The interface and explanations are in English. The project is mainly tested with English documents; other languages can be submitted, and source quotations retain their original wording.
+
+Uploads are limited to **10 MB, 20 pages and 60,000 characters**. Ponte does not include OCR. Scanned pages need text recognition elsewhere first; a page without readable text is reported rather than silently skipped.
+
+## Run it locally
+
+You need Node.js 22.13 or later and npm.
 
 ```bash
 npm ci
+```
+
+If you do not already have a `.env` file, create one from the template:
+
+```bash
 cp .env.example .env
+```
+
+Keep an existing `.env` file. Start the app with:
+
+```bash
 npm run dev
 ```
 
-Run the `cp` step only if you do not already have a `.env` file. Keep your existing configuration otherwise. Then open [localhost:5173](http://localhost:5173). Vite runs the interface and sends API requests to the backend on port 3001.
+Open [localhost:5173](http://localhost:5173). The interface runs through Vite, which forwards API requests to the backend on port 3001 by default. The sample guides work without provider credentials.
 
-With no API key you can still click through three fictional sample guides. Their explanations and chat answers are prepared, so nothing is sent to a model.
-
-To analyse a real document, put an OpenRouter key in `.env`:
+To analyse your own documents, add an OpenRouter key to `.env`:
 
 ```env
 AI_PROVIDER=openrouter
@@ -28,54 +71,32 @@ OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=apodex/apodex-1.1-mini:free
 ```
 
-Restart after you change these. The key stays on the server. Do not commit it. The free model still needs an OpenRouter account, and it can be slow or unavailable. Ponte uses the model you set and will not quietly pick another one.
+Restart after changing these settings. Keys stay on the server and must never be committed. The free model requires an OpenRouter account and is subject to provider availability and rate limits. Ponte uses the configured model and does not switch to another automatically.
 
-OpenAI works as well. Set `AI_PROVIDER=openai`, `OPENAI_API_KEY` and `OPENAI_MODEL` in `.env`.
+OpenAI is also supported: set `AI_PROVIDER=openai`, `OPENAI_API_KEY` and `OPENAI_MODEL` in `.env`.
 
-To run the compiled app:
+To serve the compiled interface and API together:
 
 ```bash
 npm run build
 npm start
 ```
 
-Then open [localhost:3001](http://localhost:3001), or whichever port you put in `PORT`. The built interface and the API share that address.
-
-## Reading a document
-
-Upload a PDF that already has selectable text, or paste the whole document. Before you start you can say who it is for, if that helps.
-
-You get actions, deadlines, event dates, costs, and questions that still need an answer. **View source** shows the quotation and its page. **View document** puts the extracted text next to the results. You can tick things off, ask follow-up questions, download a text summary, or print a PDF.
-
-Uploads can be up to 10 MB, 20 pages, and 60,000 characters. Ponte does not do OCR, so a scanned page needs text recognition somewhere else first. If a page has no selectable text, it says so instead of skipping it.
-
-Sample guides are labelled as samples.
-
-## Checking the answers
-
-The server splits the document into numbered passages. The model picks IDs; the server fills in the real quotation and page, so the model does not have to copy the wording. Formats, money, and calendar dates are checked as well. Something that does not hold up gets one correction try. What already checked out is kept. What still does not is dropped, and you see an incomplete analysis warning (the same warning goes into downloads and printouts). If nothing solid is left, no analysis is shown. Chat answers need verified evidence. Missing information should stay missing.
-
-A matching quotation is not the same as a correct explanation. Read the original before you trust a deadline, a payment, or an instruction. Ambiguous dates keep the original wording. Ponte will not invent a calendar date to fill the gap.
-
-The default Apodex setup uses JSON mode because, during testing, that endpoint refused strict JSON Schema. The server still validates the reply. Apodex runs with low reasoning effort and a 16,384 token budget (reasoning included). If it hits that limit, Ponte tries once more with 32,768 tokens and the full original document. Other OpenRouter models you configure get strict JSON Schema.
+Open [localhost:3001](http://localhost:3001), or the port set by `PORT`.
 
 ## Privacy and hosting
 
-There are no accounts and no database. Uploads live in server memory for the request and are not saved as files. Document text is not written to application logs. Short-lived counters per IP limit incoming requests. The browser holds the current document while you work. Session storage keeps checklist ticks and an identifier that is not the document text.
+Ponte has no accounts or database. Uploads are processed in server memory instead of saved as files, and document text is not written to application logs. The browser holds the current document while you work; session storage keeps checklist progress and an identifier without the document text. Clearing the workspace resets that state, but does not remove summaries you have downloaded.
 
-A live analysis sends the document, your questions, and any context you typed to OpenRouter (and the model behind it), or to OpenAI if you chose that. Their policies apply. Sample guides do not send anything.
+Live analysis sends document text, questions and the context you provide to OpenRouter and its model provider, or to OpenAI if configured. Their data and retention policies apply separately. Sample guides do not make AI requests.
 
-**Clear document & start again** wipes the document, chat, context, and checklist in the app. Downloaded summaries stay on your computer.
+For hosting, the repository includes a container and production settings for security headers, request limits, a daily provider-request allowance and bounded PDF processing. Fonts are served locally. [DEPLOYMENT.md](DEPLOYMENT.md) explains HTTPS, environment variables, proxies and the limits of the built-in counters.
 
-Locally it binds to localhost. In production you get same origin headers, request limits, a daily allowance for model calls, bounded PDF workers, and errors that do not leak internals. Fonts come from the app itself. There is a health endpoint. You can run from a production-only install or from the container in the repo.
+## Development
 
-[DEPLOYMENT.md](DEPLOYMENT.md) covers hosting variables, HTTPS, proxies, and what the limits actually do. They are per process and reset on restart. How the provider uses the data is still something you set on their side.
+The interface uses React, TypeScript and Vite. The backend uses Node.js and Express, PDF.js for text extraction and Zod for shared data validation. Source verification happens on the server.
 
-## Development and tests
-
-The interface is React, TypeScript, and Vite. The server is Express, with PDF.js for extraction and Zod for the shared shapes.
-
-`src/` is the interface (document view, checklist, chat, export). `server/` handles PDFs, providers, and evidence. `shared/` has schemas, date and money checks, and the fictional examples. `tests/` has backend tests and desktop/mobile browser tests. `scripts/` is for live provider checks and quality runs.
+Run the local checks with:
 
 ```bash
 npm run format:check
@@ -86,19 +107,19 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Browser tests start a compiled server of their own on port 3101, with provider keys emptied. They stay in example mode and do not call a model. If Chromium is already on the machine, point `PONTE_BROWSER` at it. GitHub Actions runs formatting, the build, backend tests, and the browser tests without credentials.
+The backend and browser tests need no API key. Browser tests start a separate compiled server on port 3101 with empty provider credentials. To use an existing Chromium installation, set `PONTE_BROWSER` to its executable path. GitHub Actions runs the automated checks on pushes and pull requests.
 
-Live checks use the key and model in your `.env`:
+Optional live checks use the provider configured in `.env` and consume its quota:
 
 ```bash
 npm run test:openrouter
 npm run test:quality -- latest
 ```
 
-The first one hits the provider with a fictional document. The second runs seven fixtures (dates, costs, conditions, missing attachments, questions with no answer). Reports land in `artifacts/quality/`, which Git ignores. They are regression checks, not a score for every document you might upload.
+They use fictional documents and write reports to the ignored `artifacts/quality/` directory. These are regression checks, not an accuracy score for every document.
 
-[VALIDATION.md](VALIDATION.md) has results and limits. [CONTRIBUTING.md](CONTRIBUTING.md) is the working rhythm. [CHANGELOG.md](CHANGELOG.md) is the project history.
+For more detail, see [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, [VALIDATION.md](VALIDATION.md) for test results and limitations, and [CHANGELOG.md](CHANGELOG.md) for the project history.
 
 ## License
 
-MIT, in [LICENSE](LICENSE). The bundled fonts have their own terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Ponte is released under the [MIT License](LICENSE). Bundled dependencies and fonts retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
