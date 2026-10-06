@@ -75,14 +75,21 @@ Restart after changing these settings. Keys stay on the server and must never be
 
 OpenAI is also supported: set `AI_PROVIDER=openai`, `OPENAI_API_KEY` and `OPENAI_MODEL` in `.env`.
 
-To serve the compiled interface and API together:
+### Local testing for the hackathon team
+
+After cloning this repository, use the setup steps above: `npm ci`, create `.env` from the template if needed, then run `npm run dev`. Open **[localhost:5173](http://localhost:5173)** and keep the terminal running while testing. The backend on port 3001 is started by the same command.
+
+To test the compiled interface and API as a single service, stop development mode with **Ctrl+C**, then run:
 
 ```bash
-npm run build
-npm start
+npm run local
 ```
 
-Open [localhost:3001](http://localhost:3001), or the port set by `PORT`.
+This builds the app before starting it. Open **[localhost:3001](http://localhost:3001)**, or the port set by `PORT` in `.env`. On later runs, `npm start` serves the existing build. No public deployment is required for either mode.
+
+The three sample guides work without an API key. Testing uploaded or pasted documents with AI requires the tester to add their own provider key to their local `.env`. Your key is not included in the repository.
+
+If a localhost page does not open, check that the command is still running and use the port printed in the terminal. Ports 5173 and 3001 belong to different startup modes. After renaming or moving the folder, stop old processes and run the command again from the new folder. If a port is already in use, stop the previous instance; for the compiled app you can also choose another `PORT` in `.env`.
 
 ## Privacy and hosting
 

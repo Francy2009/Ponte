@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Local testing
+
+- Preserve the browser Host through Vite so localhost uploads, examples and chat pass origin validation.
+- Cover local proxy requests and external-origin rejection with an integration regression.
+- Add `npm run local` and explicit hackathon testing instructions for the compiled app.
+
 ### Document workspace
 
 - English interface for everyday notices, letters, bills, appointments and forms.
